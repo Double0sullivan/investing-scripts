@@ -37,16 +37,23 @@ TICKERS = {
     "Nasdaq":   "^IXIC",
 }
 
+# Cells for 52-week highs (auto-updated)
+SP500_52WH_CELL  = "C8"   # S&P 500 all-time/52W high
+NASDAQ_52WH_CELL = "C17"  # Nasdaq all-time/52W high
+
 # ── Fetch prices ──────────────────────────────────────────────────────────────
-def get_price(ticker_symbol: str) -> float:
+def get_price_and_52wh(ticker_symbol: str):
     ticker = yf.Ticker(ticker_symbol)
     data = ticker.history(period="1d", interval="1m")
     if data.empty:
-        # fallback: try last close
         data = ticker.history(period="2d")
     if data.empty:
         raise ValueError(f"No data returned for {ticker_symbol}")
-    return round(float(data["Close"].iloc[-1]), 2)
+    price   = round(float(data["Close"].iloc[-1]), 2)
+    info    = ticker.info
+    high_52w = info.get("fiftyTwoWeekHigh")
+    high_52w = round(float(high_52w), 2) if high_52w else None
+    return price, high_52w
 
 def main():
     print("=" * 50)
@@ -55,14 +62,18 @@ def main():
 
     # Fetch prices
     prices = {}
+    highs  = {}
     for name, symbol in TICKERS.items():
         try:
-            price = get_price(symbol)
+            price, high_52w = get_price_and_52wh(symbol)
             prices[name] = price
-            print(f"  ✓ {name:12s}  {price:,.2f}")
+            highs[name]  = high_52w
+            high_str = f"  52W High: {high_52w:,.2f}" if high_52w else ""
+            print(f"  + {name:12s}  Price: {price:,.2f}{high_str}")
         except Exception as e:
-            print(f"  ✗ {name:12s}  ERROR: {e}")
+            print(f"  ! {name:12s}  ERROR: {e}")
             prices[name] = None
+            highs[name]  = None
 
     if all(v is None for v in prices.values()):
         print("\n  Could not fetch any prices. Check your internet connection.")
@@ -79,12 +90,18 @@ def main():
     ws = wb[SHEET_NAME]
 
     if prices["S&P 500"] is not None:
-        ws[SP500_CELL]  = prices["S&P 500"]
+        ws[SP500_CELL].value         = prices["S&P 500"]
         ws[SP500_CELL].number_format = "#,##0.00"
+    if highs["S&P 500"] is not None:
+        ws[SP500_52WH_CELL].value         = highs["S&P 500"]
+        ws[SP500_52WH_CELL].number_format = "#,##0.00"
 
     if prices["Nasdaq"] is not None:
-        ws[NASDAQ_CELL] = prices["Nasdaq"]
+        ws[NASDAQ_CELL].value         = prices["Nasdaq"]
         ws[NASDAQ_CELL].number_format = "#,##0.00"
+    if highs["Nasdaq"] is not None:
+        ws[NASDAQ_52WH_CELL].value         = highs["Nasdaq"]
+        ws[NASDAQ_52WH_CELL].number_format = "#,##0.00"
 
     # Update the "last updated" timestamp
     now = datetime.datetime.now().strftime("%B %d, %Y at %I:%M %p")
