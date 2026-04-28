@@ -419,7 +419,8 @@ def main():
 
     for ticker in tickers:
         sheet_name = ticker[:31]
-        index_ticker = None
+        # Use tab-specific index if set, otherwise fall back to default_index
+        index_ticker = default_index
         if sheet_name in wb.sheetnames:
             val = wb[sheet_name]["C6"].value
             if val and str(val).strip():
@@ -435,6 +436,9 @@ def main():
 
             buf = build_chart(ticker, hist, index_ticker, index_df)
             ws  = make_stock_sheet(wb, ticker, index_ticker, available)
+            # Explicitly write index_ticker into yellow cell C6
+            if index_ticker:
+                ws["C6"].value = index_ticker
             img = XLImage(buf)
             img.anchor = "B8"
             ws.add_image(img)
