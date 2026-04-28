@@ -42,6 +42,7 @@ INDICES_SHEET    = "Indices"
 TICKER_COL       = 2
 DATA_START_ROW   = 7
 PERIOD           = "5y"
+DEFAULT_INDEX    = "^GSPC"   # ← Change this to your preferred index
 INDEX_DATA_ROW   = 32   # row where index price history is stored in Indices tab
 
 C_DARK   = "0D1B2A"
