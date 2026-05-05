@@ -72,6 +72,10 @@ def init_db():
             price       REAL,
             fetched_at  TEXT
         );
+        CREATE TABLE IF NOT EXISTS custom_ath (
+            symbol TEXT PRIMARY KEY,
+            label  TEXT
+        );
     ''')
     # Seed default watchlist if empty
     existing = c.execute("SELECT COUNT(*) FROM watchlists").fetchone()[0]
@@ -196,7 +200,7 @@ def ensure_price_history(ticker, period='5y'):
         else:                   fetch_period = period
 
     try:
-        hist = yf.Ticker(ticker).history(period=fetch_period)['Close']
+        hist = yf.Ticker(ticker).history(period=fetch_period, auto_adjust=True)['Close']
         if hist.empty:
             return
         conn = get_db()
@@ -535,12 +539,32 @@ select:focus{border-color:var(--accent);}
 <div id="ath" class="page">
   <h1>ATH Tracker</h1>
   <p class="subtitle">Distance from all-time highs</p>
+
   <div class="toolbar">
-    <button class="btn secondary" onclick="refreshATH()">⟳ Refresh</button>
+    <button class="btn secondary" onclick="refreshATH()">⟳ Refresh All</button>
     <span class="last-updated" id="athUpdated">—</span>
   </div>
+
   <div class="ath-grid" id="athGrid">
     <div class="loading"><span class="dot-pulse">Loading</span></div>
+  </div>
+
+  <!-- Custom trackers -->
+  <div style="margin-top:2rem;">
+    <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;
+                margin-bottom:0.3rem;">Custom Trackers</div>
+    <p style="color:var(--muted);font-size:0.78rem;margin-bottom:1.2rem;">
+      Add any index, commodity or ticker to track its all-time high.
+      Examples: ^FTSE, GC=F (Gold), CL=F (Oil), BTC-USD, ^N225 (Nikkei)
+    </p>
+    <div class="add-row" style="margin-bottom:1.5rem;">
+      <input type="text" id="customATHTicker" placeholder="e.g. ^FTSE" style="width:140px"
+             onkeydown="if(event.key==='Enter') addCustomATH()">
+      <input type="text" id="customATHLabel" placeholder="Label e.g. FTSE 100" style="width:160px"
+             onkeydown="if(event.key==='Enter') addCustomATH()">
+      <button class="btn" onclick="addCustomATH()">+ Add</button>
+    </div>
+    <div class="ath-grid" id="customAthGrid"></div>
   </div>
 </div>
 
@@ -957,37 +981,92 @@ async function loadChart() {
 }
 
 // ── ATH ───────────────────────────────────────────────────────────────────────
+function athCardHTML(d, showDelete=false) {
+  const dd  = d.price&&d.ath ? (d.price-d.ath)/d.ath*100 : null;
+  const p52 = d.price&&d.high_52w ? (d.price-d.high_52w)/d.high_52w*100 : null;
+  const pct = d.price&&d.ath ? Math.max(0,d.price/d.ath*100) : 0;
+  const delBtn = showDelete
+    ? `<button class="btn danger" style="padding:0.3rem 0.6rem;font-size:0.7rem;margin-top:1rem;"
+         onclick="removeCustomATH('${d.symbol}')">✕ Remove</button>`
+    : '';
+  return `<div class="ath-card">
+    <div class="ath-name">${d.name}</div>
+    <div style="color:var(--muted);font-size:0.72rem;margin-bottom:0.5rem">${d.symbol}</div>
+    <div class="ath-price ${dd!=null&&dd>=0?'up':'down'}">${d.price?Number(d.price).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</div>
+    <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+    <div class="ath-row">
+      <div><div class="ath-stat-label">ALL-TIME HIGH</div>
+        <div class="ath-stat-val">${d.ath?Number(d.ath).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</div>
+        <div style="color:var(--muted);font-size:0.7rem">${d.ath_date||''}</div></div>
+      <div><div class="ath-stat-label">FROM ATH</div>
+        <div class="ath-stat-val ${dd!=null&&dd>=0?'up':'down'}">${dd!=null?(dd>=0?'+':'')+dd.toFixed(2)+'%':'—'}</div></div>
+      <div><div class="ath-stat-label">52W HIGH</div>
+        <div class="ath-stat-val">${d.high_52w?Number(d.high_52w).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</div></div>
+      <div><div class="ath-stat-label">FROM 52W HIGH</div>
+        <div class="ath-stat-val ${p52!=null&&p52>=0?'up':'down'}">${p52!=null?(p52>=0?'+':'')+p52.toFixed(2)+'%':'—'}</div></div>
+    </div>
+    ${delBtn}
+  </div>`;
+}
+
 async function refreshATH() {
   document.getElementById('athGrid').innerHTML=
     '<div class="loading"><span class="dot-pulse">Loading</span></div>';
   try {
     const res  = await fetch('/api/ath');
     const data = await res.json();
-    document.getElementById('athGrid').innerHTML = data.map(d => {
-      const dd  = d.price&&d.ath ? (d.price-d.ath)/d.ath*100 : null;
-      const p52 = d.price&&d.high_52w ? (d.price-d.high_52w)/d.high_52w*100 : null;
-      const pct = d.price&&d.ath ? Math.max(0,d.price/d.ath*100) : 0;
-      return `<div class="ath-card">
-        <div class="ath-name">${d.name}</div>
-        <div style="color:var(--muted);font-size:0.72rem;margin-bottom:0.5rem">${d.symbol}</div>
-        <div class="ath-price ${dd!=null&&dd>=0?'up':'down'}">${d.price?Number(d.price).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</div>
-        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
-        <div class="ath-row">
-          <div><div class="ath-stat-label">ALL-TIME HIGH</div>
-            <div class="ath-stat-val">${d.ath?Number(d.ath).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</div>
-            <div style="color:var(--muted);font-size:0.7rem">${d.ath_date||''}</div></div>
-          <div><div class="ath-stat-label">FROM ATH</div>
-            <div class="ath-stat-val ${dd!=null&&dd>=0?'up':'down'}">${dd!=null?(dd>=0?'+':'')+dd.toFixed(2)+'%':'—'}</div></div>
-          <div><div class="ath-stat-label">52W HIGH</div>
-            <div class="ath-stat-val">${d.high_52w?Number(d.high_52w).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</div></div>
-          <div><div class="ath-stat-label">FROM 52W HIGH</div>
-            <div class="ath-stat-val ${p52!=null&&p52>=0?'up':'down'}">${p52!=null?(p52>=0?'+':'')+p52.toFixed(2)+'%':'—'}</div></div>
-        </div></div>`;
-    }).join('');
+    document.getElementById('athGrid').innerHTML = data.map(d=>athCardHTML(d,false)).join('');
     document.getElementById('athUpdated').textContent='Updated: '+new Date().toLocaleTimeString('en-GB');
   } catch(e) {
     document.getElementById('athGrid').innerHTML='<div class="loading">Error</div>';
   }
+  loadCustomATH();
+}
+
+async function loadCustomATH() {
+  const grid = document.getElementById('customAthGrid');
+  if (!grid) return;
+  grid.innerHTML = '<div class="loading"><span class="dot-pulse">Loading</span></div>';
+  try {
+    const res  = await fetch('/api/ath/custom');
+    const data = await res.json();
+    if (!data.length) {
+      grid.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;padding:0.5rem 0;">No custom trackers yet — add one above.</div>';
+      return;
+    }
+    grid.innerHTML = data.map(d=>athCardHTML(d,true)).join('');
+  } catch(e) {
+    grid.innerHTML = '<div class="loading">Error loading custom trackers</div>';
+  }
+}
+
+async function addCustomATH() {
+  const sym   = document.getElementById('customATHTicker').value.trim().toUpperCase();
+  const label = document.getElementById('customATHLabel').value.trim();
+  if (!sym) { toast('Enter a ticker symbol'); return; }
+  toast('Adding '+sym+'...');
+  const res  = await fetch('/api/ath/custom/add', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({symbol: sym, label: label || sym})
+  });
+  const data = await res.json();
+  if (data.ok) {
+    document.getElementById('customATHTicker').value = '';
+    document.getElementById('customATHLabel').value  = '';
+    toast(sym+' added!');
+    loadCustomATH();
+  } else {
+    toast('Error: '+(data.error||'Unknown'));
+  }
+}
+
+async function removeCustomATH(sym) {
+  await fetch('/api/ath/custom/remove', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({symbol: sym})
+  });
+  toast(sym+' removed');
+  loadCustomATH();
 }
 
 // ── DRAWDOWN ──────────────────────────────────────────────────────────────────
@@ -1317,6 +1396,61 @@ def get_drawdown():
         })
     except Exception as e:
         return jsonify({'error': str(e)})
+
+@app.route('/api/ath/custom')
+def get_custom_ath():
+    conn = get_db()
+    rows = conn.execute("SELECT symbol, label FROM custom_ath ORDER BY label").fetchall()
+    conn.close()
+    results = []
+    for row in rows:
+        symbol = row['symbol']
+        name   = row['label']
+        try:
+            t    = yf.Ticker(symbol)
+            info = t.info
+            try:    price = t.fast_info.last_price
+            except: price = info.get('regularMarketPrice') or info.get('currentPrice')
+            hist = t.history(period='max')['High']
+            if not hist.empty:
+                ath_val      = float(hist.max())
+                ath_idx      = hist.idxmax()
+                ath_date_str = ath_idx.strftime('%b %d, %Y') if hasattr(ath_idx,'strftime') else str(ath_idx)
+            else:
+                ath_val, ath_date_str = info.get('fiftyTwoWeekHigh'), '—'
+            results.append({
+                'symbol':   symbol, 'name': name,
+                'ath':      round(ath_val, 2) if ath_val else None,
+                'ath_date': ath_date_str,
+                'price':    round(float(price), 2) if price else None,
+                'high_52w': round(float(info.get('fiftyTwoWeekHigh')), 2) if info.get('fiftyTwoWeekHigh') else None,
+            })
+        except Exception as e:
+            results.append({'symbol': symbol, 'name': name,
+                            'price': None, 'high_52w': None, 'ath': None, 'ath_date': '—'})
+    return jsonify(results)
+
+@app.route('/api/ath/custom/add', methods=['POST'])
+def add_custom_ath():
+    data   = request.json
+    symbol = data.get('symbol','').strip().upper()
+    label  = data.get('label','').strip() or symbol
+    if not symbol:
+        return jsonify({'ok': False, 'error': 'No symbol'})
+    conn = get_db()
+    conn.execute("INSERT OR REPLACE INTO custom_ath VALUES (?,?)", (symbol, label))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+@app.route('/api/ath/custom/remove', methods=['POST'])
+def remove_custom_ath():
+    symbol = request.json.get('symbol','').strip().upper()
+    conn   = get_db()
+    conn.execute("DELETE FROM custom_ath WHERE symbol=?", (symbol,))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
 
 # ── Launch ────────────────────────────────────────────────────────────────────
 def open_browser():
