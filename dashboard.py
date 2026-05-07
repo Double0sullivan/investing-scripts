@@ -108,6 +108,33 @@ ATH_SYMBOLS = {
     "^IXIC": "Nasdaq",
 }
 
+# ── FRED API ──────────────────────────────────────────────────────────────────
+FRED_API_KEY = "d0675cdcd38ef3e6ff10223dcb72570f"  # ← your FRED API key
+
+FRED_SERIES = {
+    # US Treasuries
+    "DGS1MO":  "US 1M",
+    "DGS3MO":  "US 3M",
+    "DGS6MO":  "US 6M",
+    "DGS1":    "US 1Y",
+    "DGS2":    "US 2Y",
+    "DGS5":    "US 5Y",
+    "DGS10":   "US 10Y",
+    "DGS20":   "US 20Y",
+    "DGS30":   "US 30Y",
+    # UK Gilts
+    "IRLTLT01GBM156N": "UK 10Y Gilt",
+    # German Bunds
+    "IRLTLT01DEM156N": "Germany 10Y Bund",
+    # Fed Funds
+    "FEDFUNDS": "Fed Funds Rate",
+    # Breakeven inflation
+    "T10YIE":  "US 10Y Breakeven",
+    "T5YIE":   "US 5Y Breakeven",
+    # 2s10s spread
+    "T10Y2Y":  "2s10s Spread",
+}
+
 TODAY = date.today().isoformat()
 
 def get_watchlists_dict():
@@ -404,6 +431,7 @@ select:focus{border-color:var(--accent);}
   <button onclick="showPage('charts',this)" id="navCharts">CHARTS</button>
   <button onclick="showPage('ath',this)" id="navATH">ATH TRACKER</button>
   <button onclick="showPage('drawdown',this)" id="navDrawdown">DRAWDOWN</button>
+  <button onclick="showPage('yields',this)" id="navYields">YIELDS</button>
   <button class="btn success" style="padding:0.35rem 0.8rem;font-size:0.75rem;margin-left:auto"
           onclick="openImport()">⬆ Import CSV</button>
 </nav>
@@ -565,6 +593,89 @@ select:focus{border-color:var(--accent);}
       <button class="btn" onclick="addCustomATH()">+ Add</button>
     </div>
     <div class="ath-grid" id="customAthGrid"></div>
+  </div>
+</div>
+
+<!-- YIELDS -->
+<div id="yields" class="page">
+  <h1>Bond Yields</h1>
+  <p class="subtitle">Live yield data from FRED (Federal Reserve Economic Data)</p>
+
+  <!-- Yield Curve -->
+  <div class="card" style="padding:1rem;margin-bottom:1.5rem;">
+    <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:0.95rem;margin-bottom:0.3rem;">
+      US Treasury Yield Curve
+    </div>
+    <div style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Latest available data</div>
+    <div id="yieldCurveDiv" style="width:100%;height:320px;">
+      <div class="loading"><span class="dot-pulse">Loading</span></div>
+    </div>
+  </div>
+
+  <!-- Historical chart -->
+  <div class="card" style="padding:1rem;margin-bottom:1.5rem;">
+    <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:0.95rem;margin-bottom:1rem;">
+      Historical Yield Chart
+    </div>
+    <div class="chart-controls" style="margin-bottom:1rem;">
+      <select id="yieldSeries1" onchange="loadYieldChart()">
+        <option value="DGS10">US 10Y</option>
+        <option value="DGS2">US 2Y</option>
+        <option value="DGS5">US 5Y</option>
+        <option value="DGS30">US 30Y</option>
+        <option value="DGS1MO">US 1M</option>
+        <option value="DGS3MO">US 3M</option>
+        <option value="DGS6MO">US 6M</option>
+        <option value="DGS1">US 1Y</option>
+        <option value="DGS20">US 20Y</option>
+        <option value="IRLTLT01GBM156N">UK 10Y Gilt</option>
+        <option value="IRLTLT01DEM156N">Germany 10Y Bund</option>
+        <option value="FEDFUNDS">Fed Funds Rate</option>
+        <option value="T10YIE">US 10Y Breakeven</option>
+        <option value="T5YIE">US 5Y Breakeven</option>
+        <option value="T10Y2Y">2s10s Spread</option>
+      </select>
+      <select id="yieldSeries2" onchange="loadYieldChart()">
+        <option value="">— Add comparison —</option>
+        <option value="DGS2">US 2Y</option>
+        <option value="DGS10">US 10Y</option>
+        <option value="DGS5">US 5Y</option>
+        <option value="DGS30">US 30Y</option>
+        <option value="DGS1MO">US 1M</option>
+        <option value="DGS3MO">US 3M</option>
+        <option value="DGS6MO">US 6M</option>
+        <option value="DGS1">US 1Y</option>
+        <option value="DGS20">US 20Y</option>
+        <option value="IRLTLT01GBM156N">UK 10Y Gilt</option>
+        <option value="IRLTLT01DEM156N">Germany 10Y Bund</option>
+        <option value="FEDFUNDS">Fed Funds Rate</option>
+        <option value="T10YIE">US 10Y Breakeven</option>
+        <option value="T5YIE">US 5Y Breakeven</option>
+        <option value="T10Y2Y">2s10s Spread</option>
+      </select>
+      <select id="yieldPeriod" onchange="loadYieldChart()">
+        <option value="1y">1 Year</option>
+        <option value="2y">2 Years</option>
+        <option value="5y" selected>5 Years</option>
+        <option value="10y">10 Years</option>
+        <option value="20y">20 Years</option>
+        <option value="max">Max</option>
+      </select>
+      <button class="btn secondary" onclick="loadYieldChart()">⟳ Reload</button>
+    </div>
+    <div id="yieldHistDiv" style="width:100%;height:380px;">
+      <div class="loading"><span class="dot-pulse">Loading</span></div>
+    </div>
+  </div>
+
+  <!-- Key rates panel -->
+  <div class="card">
+    <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:0.95rem;margin-bottom:1rem;">
+      Key Rates
+    </div>
+    <div id="keyRatesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1rem;">
+      <div class="loading"><span class="dot-pulse">Loading</span></div>
+    </div>
   </div>
 </div>
 
@@ -1154,6 +1265,103 @@ async function loadDrawdown() {
   }
 }
 
+// ── YIELDS ───────────────────────────────────────────────────────────────────
+async function initYields() {
+  loadYieldCurve();
+  loadYieldChart();
+  loadKeyRates();
+}
+
+async function loadYieldCurve() {
+  try {
+    const res  = await fetch('/api/yields/curve');
+    const data = await res.json();
+    if (data.error) {
+      document.getElementById('yieldCurveDiv').innerHTML =
+        '<div class="loading">'+data.error+'</div>'; return;
+    }
+    const bg = '#080d14', grid = '#1a2535';
+    const layout = {
+      paper_bgcolor:bg, plot_bgcolor:bg,
+      font:{family:'DM Mono, monospace', color:'#94a3b8', size:11},
+      margin:{l:50,r:20,t:30,b:40},
+      xaxis:{gridcolor:grid,linecolor:grid,tickcolor:grid,zeroline:false,title:{text:'Maturity',font:{color:'#64748b'}}},
+      yaxis:{gridcolor:grid,linecolor:grid,tickcolor:grid,zeroline:false,
+             ticksuffix:'%', title:{text:'Yield %',font:{color:'#64748b'}}},
+      hovermode:'x unified', showlegend:false,
+    };
+    Plotly.newPlot('yieldCurveDiv',[{
+      x: data.labels, y: data.values,
+      type:'scatter', mode:'lines+markers',
+      line:{color:'#3b82f6',width:2},
+      marker:{color:'#3b82f6',size:7},
+      fill:'tozeroy', fillcolor:'rgba(59,130,246,0.1)',
+      hovertemplate:'%{y:.2f}%<extra></extra>',
+    }], layout, {responsive:true, displayModeBar:false});
+  } catch(e) {
+    document.getElementById('yieldCurveDiv').innerHTML='<div class="loading">Error loading yield curve</div>';
+  }
+}
+
+async function loadYieldChart() {
+  const s1     = document.getElementById('yieldSeries1').value;
+  const s2     = document.getElementById('yieldSeries2').value;
+  const period = document.getElementById('yieldPeriod').value;
+  document.getElementById('yieldHistDiv').innerHTML =
+    '<div class="loading"><span class="dot-pulse">Loading</span></div>';
+  try {
+    const params = new URLSearchParams({series: s1, period});
+    if (s2) params.append('series2', s2);
+    const res  = await fetch('/api/yields/history?'+params);
+    const data = await res.json();
+    if (data.error) {
+      document.getElementById('yieldHistDiv').innerHTML='<div class="loading">'+data.error+'</div>'; return;
+    }
+    const bg = '#080d14', grid = '#1a2535';
+    const layout = {
+      paper_bgcolor:bg, plot_bgcolor:bg,
+      font:{family:'DM Mono, monospace', color:'#94a3b8', size:11},
+      margin:{l:55,r:20,t:40,b:50},
+      xaxis:{gridcolor:grid,linecolor:grid,tickcolor:grid,zeroline:false},
+      yaxis:{gridcolor:grid,linecolor:grid,tickcolor:grid,zeroline:false,ticksuffix:'%'},
+      hovermode:'x unified', showlegend:true,
+      legend:{bgcolor:'rgba(0,0,0,0)',bordercolor:'#1a2535',font:{color:'#94a3b8'}},
+    };
+    const traces = [{
+      x:data.dates, y:data.values, name:data.label,
+      type:'scatter', mode:'lines',
+      line:{color:'#3b82f6',width:2},
+      hovertemplate:'%{y:.2f}%<extra>'+data.label+'</extra>',
+    }];
+    if (data.dates2) {
+      traces.push({
+        x:data.dates2, y:data.values2, name:data.label2,
+        type:'scatter', mode:'lines',
+        line:{color:'#f59e0b',width:2},
+        hovertemplate:'%{y:.2f}%<extra>'+data.label2+'</extra>',
+      });
+    }
+    Plotly.newPlot('yieldHistDiv', traces, layout, {responsive:true, displayModeBar:false});
+  } catch(e) {
+    document.getElementById('yieldHistDiv').innerHTML='<div class="loading">Error loading chart</div>';
+  }
+}
+
+async function loadKeyRates() {
+  try {
+    const res  = await fetch('/api/yields/key');
+    const data = await res.json();
+    document.getElementById('keyRatesGrid').innerHTML = data.map(d => `
+      <div>
+        <div style="color:var(--muted);font-size:0.72rem;margin-bottom:0.3rem;">${d.label}</div>
+        <div style="font-size:1.1rem;font-weight:500;color:var(--text);">${d.value!=null?d.value.toFixed(2)+'%':'—'}</div>
+        <div style="color:var(--muted);font-size:0.68rem;margin-top:0.2rem;">${d.date||''}</div>
+      </div>`).join('');
+  } catch(e) {
+    document.getElementById('keyRatesGrid').innerHTML='<div class="loading">Error</div>';
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadWatchlists();
 </script>
@@ -1451,6 +1659,106 @@ def remove_custom_ath():
     conn.commit()
     conn.close()
     return jsonify({'ok': True})
+
+import urllib.request as _urllib_req
+
+def fred_fetch(series_id, start=None):
+    """Fetch a FRED series. Returns list of (date, value) tuples."""
+    url = (f"https://api.stlouisfed.org/fred/series/observations"
+           f"?series_id={series_id}&api_key={FRED_API_KEY}&file_type=json"
+           f"&sort_order=asc&observation_start={start or '1950-01-01'}")
+    try:
+        with _urllib_req.urlopen(url, timeout=10) as r:
+            import json as _json
+            data = _json.loads(r.read())
+        return [(o['date'], float(o['value']))
+                for o in data.get('observations', [])
+                if o['value'] != '.']
+    except Exception as e:
+        raise ValueError(f"FRED error for {series_id}: {e}")
+
+def period_to_start(period):
+    from datetime import date, timedelta
+    days = {'1y':365,'2y':730,'5y':1825,'10y':3650,'20y':7300,'max':0}
+    d = days.get(period, 1825)
+    if d == 0:
+        return '1950-01-01'
+    return (date.today() - timedelta(days=d)).isoformat()
+
+# US Treasury curve maturities in order
+CURVE_SERIES = [
+    ("DGS1MO","1M"),("DGS3MO","3M"),("DGS6MO","6M"),
+    ("DGS1","1Y"),("DGS2","2Y"),("DGS5","5Y"),
+    ("DGS10","10Y"),("DGS20","20Y"),("DGS30","30Y"),
+]
+
+KEY_RATES = [
+    ("DGS2",    "US 2Y"),
+    ("DGS10",   "US 10Y"),
+    ("DGS30",   "US 30Y"),
+    ("FEDFUNDS","Fed Funds"),
+    ("T10Y2Y",  "2s10s Spread"),
+    ("T10YIE",  "10Y Breakeven"),
+    ("IRLTLT01GBM156N","UK 10Y Gilt"),
+    ("IRLTLT01DEM156N","DE 10Y Bund"),
+]
+
+@app.route('/api/yields/curve')
+def get_yield_curve():
+    try:
+        labels, values = [], []
+        for sid, label in CURVE_SERIES:
+            try:
+                obs = fred_fetch(sid, start='2020-01-01')
+                if obs:
+                    labels.append(label)
+                    values.append(obs[-1][1])
+            except:
+                pass
+        if not labels:
+            return jsonify({'error': 'Could not fetch yield curve data'})
+        return jsonify({'labels': labels, 'values': values})
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/api/yields/history')
+def get_yield_history():
+    series  = request.args.get('series', 'DGS10')
+    series2 = request.args.get('series2', '')
+    period  = request.args.get('period', '5y')
+    start   = period_to_start(period)
+    try:
+        obs = fred_fetch(series, start=start)
+        if not obs:
+            return jsonify({'error': f'No data for {series}'})
+        result = {
+            'dates':  [o[0] for o in obs],
+            'values': [o[1] for o in obs],
+            'label':  FRED_SERIES.get(series, series),
+        }
+        if series2:
+            obs2 = fred_fetch(series2, start=start)
+            if obs2:
+                result['dates2']  = [o[0] for o in obs2]
+                result['values2'] = [o[1] for o in obs2]
+                result['label2']  = FRED_SERIES.get(series2, series2)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/api/yields/key')
+def get_key_rates():
+    results = []
+    for sid, label in KEY_RATES:
+        try:
+            obs = fred_fetch(sid, start='2020-01-01')
+            if obs:
+                results.append({'label': label, 'value': obs[-1][1], 'date': obs[-1][0]})
+            else:
+                results.append({'label': label, 'value': None, 'date': None})
+        except:
+            results.append({'label': label, 'value': None, 'date': None})
+    return jsonify(results)
 
 # ── Launch ────────────────────────────────────────────────────────────────────
 def open_browser():
